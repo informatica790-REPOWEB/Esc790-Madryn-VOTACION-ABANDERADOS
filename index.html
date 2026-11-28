@@ -66,10 +66,12 @@
       var loader = document.getElementById('loader');
       var statusText = document.getElementById('statusText');
       var subText = document.getElementById('subText');
+      var directBtn = document.getElementById('directBtn');
       var launched = false;
+      var blockedByOldBackend = false;
 
       function launchVoting() {
-        if (launched) return;
+        if (launched || blockedByOldBackend) return;
         launched = true;
         if (!EMBED_MODE) {
           window.location.replace(TARGET_VOTE_URL);
@@ -86,10 +88,29 @@
       }
 
       fetch(HEALTH_URL, { method: 'GET', cache: 'no-store' })
-        .then(function () {
-          statusText.textContent = '¡Conexión verificada!';
-          subText.textContent = 'Abriendo boleta única digital...';
-          launchVoting();
+        .then(function (res) {
+          if (!res.ok) throw new Error('health_http_' + res.status);
+          return res.json().catch(function () { return {}; });
+        })
+        .then(function (data) {
+          if (data && data.eleccionVotar === true) {
+            statusText.textContent = '¡Conexión verificada!';
+            subText.textContent = 'Abriendo boleta única digital...';
+            launchVoting();
+          } else {
+            blockedByOldBackend = true;
+            var spinner = document.querySelector('.spinner');
+            if (spinner) spinner.style.display = 'none';
+            statusText.style.color = '#b91c1c';
+            statusText.textContent = 'Falta actualizar el servidor Cloud Run';
+            subText.textContent = 'El servidor destino todavía tiene una versión anterior sin /eleccion-votar (por eso redirigía al Login de Reservas). Subí los cambios y ejecutá ./deploy.sh en sistema-reservas-790.';
+            directBtn.textContent = 'Reintentar Conexión';
+            directBtn.href = window.location.href;
+            directBtn.onclick = function (e) {
+              e.preventDefault();
+              window.location.reload();
+            };
+          }
         })
         .catch(function () {
           statusText.textContent = 'Despertando sistema electoral...';
@@ -97,7 +118,9 @@
           setTimeout(launchVoting, 1800);
         });
 
-      setTimeout(launchVoting, 4500);
+      setTimeout(function () {
+        if (!blockedByOldBackend) launchVoting();
+      }, 4500);
     })();
   </script>
 </body>
